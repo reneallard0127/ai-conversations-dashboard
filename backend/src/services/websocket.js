@@ -2,8 +2,6 @@ const WebSocket = require('ws');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
 
-// Mapa de conexiones activas por organización
-// { orgId: [ws1, ws2, ...] }
 const orgConnections = new Map();
 
 const initWebSocket = (server) => {
@@ -12,7 +10,6 @@ const initWebSocket = (server) => {
   wss.on('connection', async (ws, req) => {
     console.log('🔌 Nueva conexión WebSocket');
 
-    // Autenticar via token en la URL: ws://localhost:4000?token=xxx
     const url = new URL(req.url, 'http://localhost');
     const token = url.searchParams.get('token');
 
@@ -31,7 +28,6 @@ const initWebSocket = (server) => {
       return;
     }
 
-    // Registrar conexión en el mapa de la organización
     const { orgId, userId } = userData;
     ws.orgId = orgId;
     ws.userId = userId;
@@ -44,10 +40,15 @@ const initWebSocket = (server) => {
     console.log(`✅ Usuario ${userId} conectado a org ${orgId}`);
     ws.send(JSON.stringify({ type: 'CONNECTED', message: 'Conectado correctamente' }));
 
-    // Manejar mensajes entrantes del frontend
     ws.on('message', async (data) => {
       try {
         const message = JSON.parse(data);
+
+        // Responder al ping para mantener conexión viva en Railway
+        if (message.type === 'PING') {
+          ws.send(JSON.stringify({ type: 'PONG' }));
+          return;
+        }
 
         if (message.type === 'SEND_MESSAGE') {
           await handleChatMessage(ws, message, userData);
@@ -58,7 +59,6 @@ const initWebSocket = (server) => {
       }
     });
 
-    // Limpiar conexión al cerrar
     ws.on('close', () => {
       console.log(`🔌 Usuario ${userId} desconectado`);
       const connections = orgConnections.get(orgId);
@@ -75,12 +75,10 @@ const initWebSocket = (server) => {
   return wss;
 };
 
-// Manejar un mensaje de chat: llamar a Gemini y hacer streaming
 const handleChatMessage = async (ws, message, userData) => {
   const { conversationId, content } = message;
   const { orgId } = userData;
 
-  // Verificar que la conversación pertenece a la org
   const convResult = await pool.query(
     `SELECT * FROM conversations WHERE id = $1 AND org_id = $2`,
     [conversationId, orgId]
@@ -91,27 +89,23 @@ const handleChatMessage = async (ws, message, userData) => {
     return;
   }
 
-  // Obtener el prompt por defecto de la organización
   const promptResult = await pool.query(
     `SELECT content FROM prompts WHERE org_id = $1 AND is_default = TRUE LIMIT 1`,
     [orgId]
   );
   const systemPrompt = promptResult.rows[0]?.content || 'Eres un asistente útil.';
 
-  // Guardar mensaje del usuario en la BD
   await pool.query(
     `INSERT INTO messages (conversation_id, org_id, role, content, created_at)
      VALUES ($1, $2, 'user', $3, NOW())`,
     [conversationId, orgId, content]
   );
 
-  // Notificar al frontend que el mensaje fue guardado
   ws.send(JSON.stringify({
     type: 'MESSAGE_SAVED',
     data: { role: 'user', content, conversationId }
   }));
 
-  // Obtener historial de mensajes para contexto
   const historyResult = await pool.query(
     `SELECT role, content FROM messages
      WHERE conversation_id = $1
@@ -119,7 +113,6 @@ const handleChatMessage = async (ws, message, userData) => {
     [conversationId]
   );
 
-  // Iniciar streaming con Gemini
   const startTime = Date.now();
   ws.send(JSON.stringify({ type: 'AI_STREAM_START' }));
 
@@ -127,14 +120,12 @@ const handleChatMessage = async (ws, message, userData) => {
     const fullResponse = await streamGeminiResponse(ws, systemPrompt, historyResult.rows);
     const responseTime = Date.now() - startTime;
 
-    // Guardar respuesta completa en BD
     await pool.query(
       `INSERT INTO messages (conversation_id, org_id, role, content, prompt_used, response_time_ms, created_at)
        VALUES ($1, $2, 'assistant', $3, $4, $5, NOW())`,
       [conversationId, orgId, fullResponse, systemPrompt, responseTime]
     );
 
-    // Notificar que el streaming terminó
     ws.send(JSON.stringify({
       type: 'AI_STREAM_END',
       data: { role: 'assistant', content: fullResponse, responseTime }
@@ -146,7 +137,6 @@ const handleChatMessage = async (ws, message, userData) => {
   }
 };
 
-// Llamar a Gemini API con streaming token por token
 const streamGeminiResponse = async (ws, systemPrompt, history) => {
   const fetch = require('node-fetch');
   const apiKey = process.env.GEMINI_API_KEY;
@@ -214,7 +204,6 @@ const streamGeminiResponse = async (ws, systemPrompt, history) => {
   return fullResponse;
 };
 
-// Enviar mensaje a todos los usuarios de una organización
 const broadcastToOrg = (orgId, message) => {
   const connections = orgConnections.get(orgId);
   if (!connections) return;

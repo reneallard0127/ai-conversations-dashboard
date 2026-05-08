@@ -1,6 +1,7 @@
 let ws = null;
 let listeners = {};
 let reconnectTimer = null;
+let pingTimer = null;
 let currentToken = null;
 
 export const connectWebSocket = (token) => {
@@ -20,11 +21,18 @@ const _connect = (token) => {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      // Ping cada 20 segundos para mantener conexión viva
+      pingTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'PING' }));
+        }
+      }, 20000);
     };
 
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
+        if (message.type === 'PONG') return;
         if (listeners[message.type]) {
           listeners[message.type].forEach(cb => cb(message));
         }
@@ -42,6 +50,7 @@ const _connect = (token) => {
 
     ws.onclose = () => {
       console.log('🔌 WebSocket desconectado, reintentando en 3s...');
+      if (pingTimer) clearInterval(pingTimer);
       reconnectTimer = setTimeout(() => {
         if (currentToken) _connect(currentToken);
       }, 3000);
@@ -77,6 +86,7 @@ export const sendMessage = (data) => {
 
 export const disconnectWebSocket = () => {
   if (reconnectTimer) clearTimeout(reconnectTimer);
+  if (pingTimer) clearInterval(pingTimer);
   currentToken = null;
   if (ws) {
     ws.close();
