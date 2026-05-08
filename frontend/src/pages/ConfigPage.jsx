@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Settings, Key, User, Check, Plus, Trash2 } from 'lucide-react';
 import api from '../services/api';
+import toast from 'react-hot-toast';
 
 const ConfigPage = () => {
   const { user } = useAuth();
@@ -25,24 +26,39 @@ const ConfigPage = () => {
     try {
       await api.patch(`/config/prompts/${promptId}/default`);
       setPrompts(prev => prev.map(p => ({ ...p, is_default: p.id === promptId })));
-    } catch (err) { console.error(err); }
+      toast.success('Prompt activado correctamente');
+    } catch (err) {
+      toast.error('Error al activar el prompt');
+      console.error(err);
+    }
   };
 
   const handleCreate = async () => {
-    if (!newPrompt.name || !newPrompt.content) return;
+    if (!newPrompt.name || !newPrompt.content) {
+      toast.error('Nombre y contenido son requeridos');
+      return;
+    }
     try {
       const { data } = await api.post('/config/prompts', newPrompt);
       setPrompts(prev => [...prev, data]);
       setNewPrompt({ name: '', content: '' });
       setShowForm(false);
-    } catch (err) { console.error(err); }
+      toast.success('Prompt creado correctamente');
+    } catch (err) {
+      toast.error('Error al crear el prompt');
+      console.error(err);
+    }
   };
 
   const handleDelete = async (promptId) => {
     try {
       await api.delete(`/config/prompts/${promptId}`);
       setPrompts(prev => prev.filter(p => p.id !== promptId));
-    } catch (err) { console.error(err); }
+      toast.success('Prompt eliminado');
+    } catch (err) {
+      toast.error('Error al eliminar el prompt');
+      console.error(err);
+    }
   };
 
   if (loading) return (
@@ -118,7 +134,6 @@ const ConfigPage = () => {
           </button>
         </div>
 
-        {/* Formulario nuevo prompt */}
         {showForm && (
           <div className="mb-4 p-4 bg-dark-900 rounded-lg border border-slate-600 space-y-3">
             <input
