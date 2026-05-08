@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { BarChart3, TrendingDown, Download } from 'lucide-react';
+import { BarChart3, TrendingDown, Download, Filter } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -9,20 +9,39 @@ const COLORS = ['#0ea5e9', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 const AnalyticsPage = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({
+    dateFrom: '',
+    dateTo: '',
+    channel: '',
+  });
 
-  useEffect(() => {
-    api.get('/analytics')
+  const fetchAnalytics = () => {
+    setLoading(true);
+    const params = {};
+    if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+    if (filters.dateTo) params.dateTo = filters.dateTo;
+    if (filters.channel) params.channel = filters.channel;
+
+    api.get('/analytics', { params })
       .then(r => setData(r.data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  };
 
-  // Exportar conversaciones a CSV
+  useEffect(() => { fetchAnalytics(); }, []);
+
+  const clearFilters = () => {
+    setFilters({ dateFrom: '', dateTo: '', channel: '' });
+    setTimeout(() => fetchAnalytics(), 100);
+  };
+
+  const hasActiveFilters = Object.values(filters).some(v => v);
+
   const exportToCSV = async () => {
     try {
       toast.loading('Preparando exportación...', { id: 'export' });
       const { data: convData } = await api.get('/conversations', { params: { limit: 1000, page: 1 } });
-      
+
       const headers = ['ID', 'Fecha Inicio', 'Canal', 'Duración (s)', 'Estado', 'Rating'];
       const rows = convData.data.map(conv => [
         conv.id,
@@ -44,29 +63,21 @@ const AnalyticsPage = () => {
       link.download = `conversaciones_${new Date().toISOString().slice(0, 10)}.csv`;
       link.click();
       URL.revokeObjectURL(url);
-
       toast.success(`${convData.data.length} conversaciones exportadas`, { id: 'export' });
     } catch (err) {
       toast.error('Error al exportar', { id: 'export' });
-      console.error(err);
     }
   };
 
-  // Exportar analytics a CSV
   const exportAnalytics = () => {
     try {
       toast.loading('Exportando analytics...', { id: 'export-analytics' });
-
       const headers = ['Métrica', 'Valor', 'Porcentaje'];
       const ratingRows = (data?.ratingDistribution || []).map(r => [
-        `Rating ${r.rating} estrellas`,
-        r.count,
-        `${r.percentage}%`
+        `Rating ${r.rating} estrellas`, r.count, `${r.percentage}%`
       ]);
       const channelRows = (data?.channelDistribution || []).map(c => [
-        `Canal ${c.channel}`,
-        c.count,
-        `${c.percentage}%`
+        `Canal ${c.channel}`, c.count, `${c.percentage}%`
       ]);
 
       const csvContent = [headers, ...ratingRows, [], ['Canal', 'Cantidad', 'Porcentaje'], ...channelRows]
@@ -80,18 +91,11 @@ const AnalyticsPage = () => {
       link.download = `analytics_${new Date().toISOString().slice(0, 10)}.csv`;
       link.click();
       URL.revokeObjectURL(url);
-
-      toast.success('Analytics exportados correctamente', { id: 'export-analytics' });
+      toast.success('Analytics exportados', { id: 'export-analytics' });
     } catch (err) {
       toast.error('Error al exportar analytics', { id: 'export-analytics' });
     }
   };
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-full">
-      <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-primary-500"></div>
-    </div>
-  );
 
   const ratingData = [1,2,3,4,5].map(r => {
     const found = data?.ratingDistribution?.find(d => parseInt(d.rating) === r);
@@ -106,6 +110,7 @@ const AnalyticsPage = () => {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white">Analytics</h1>
@@ -129,6 +134,61 @@ const AnalyticsPage = () => {
         </div>
       </div>
 
+      {/* Filtros */}
+      <div className="bg-dark-800 rounded-xl border border-slate-700 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Filter size={14} className="text-slate-400" />
+          <span className="text-slate-400 text-sm font-medium">Filtrar métricas</span>
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="ml-auto text-xs text-red-400 hover:text-red-300 transition-colors"
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="text-slate-500 text-xs mb-1 block">Canal</label>
+            <select
+              value={filters.channel}
+              onChange={e => setFilters(f => ({ ...f, channel: e.target.value }))}
+              className="w-full bg-dark-900 border border-slate-600 text-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
+            >
+              <option value="">Todos los canales</option>
+              <option value="Web">Web</option>
+              <option value="WhatsApp">WhatsApp</option>
+              <option value="Instagram">Instagram</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-slate-500 text-xs mb-1 block">Desde</label>
+            <input
+              type="date"
+              value={filters.dateFrom}
+              onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
+              className="w-full bg-dark-900 border border-slate-600 text-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
+            />
+          </div>
+          <div>
+            <label className="text-slate-500 text-xs mb-1 block">Hasta</label>
+            <input
+              type="date"
+              value={filters.dateTo}
+              onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
+              className="w-full bg-dark-900 border border-slate-600 text-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
+            />
+          </div>
+        </div>
+        <button
+          onClick={fetchAnalytics}
+          className="mt-3 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          Aplicar filtros
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Distribución de ratings */}
         <div className="bg-dark-800 rounded-xl border border-slate-700 p-5">
@@ -136,24 +196,34 @@ const AnalyticsPage = () => {
             <BarChart3 size={18} className="text-primary-500" />
             Distribución de Ratings
           </h2>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={ratingData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="rating" stroke="#64748b" tick={{ fontSize: 12 }} />
-              <YAxis stroke="#64748b" tick={{ fontSize: 12 }} unit="%" />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                formatter={(value) => [`${value}%`, 'Porcentaje']}
-              />
-              <Bar dataKey="porcentaje" fill="#0ea5e9" radius={[4,4,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {loading ? (
+            <div className="h-48 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary-500"></div>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={ratingData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="rating" stroke="#64748b" tick={{ fontSize: 12 }} />
+                <YAxis stroke="#64748b" tick={{ fontSize: 12 }} unit="%" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                  formatter={(value) => [`${value}%`, 'Porcentaje']}
+                />
+                <Bar dataKey="porcentaje" fill="#0ea5e9" radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Distribución por canal */}
         <div className="bg-dark-800 rounded-xl border border-slate-700 p-5">
           <h2 className="text-white font-semibold mb-4">Conversaciones por Canal</h2>
-          {channelData.length > 0 ? (
+          {loading ? (
+            <div className="h-48 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary-500"></div>
+            </div>
+          ) : channelData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
@@ -187,7 +257,9 @@ const AnalyticsPage = () => {
           <TrendingDown size={18} className="text-red-400" />
           Top 5 Prompts con Peor Rating
         </h2>
-        {data?.worstPrompts?.length > 0 ? (
+        {loading ? (
+          <div className="text-center py-8 text-slate-500">Cargando...</div>
+        ) : data?.worstPrompts?.length > 0 ? (
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-700">
