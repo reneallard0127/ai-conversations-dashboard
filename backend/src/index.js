@@ -21,7 +21,12 @@ collectDefaultMetrics();
 
 // Middlewares
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://frontend:5173'],
+  origin: [
+    'http://localhost:5173',
+    'http://frontend:5173',
+    'https://scintillating-miracle-production-2805.up.railway.app',
+    /\.railway\.app$/
+  ],
   credentials: true
 }));
 app.use(express.json());
