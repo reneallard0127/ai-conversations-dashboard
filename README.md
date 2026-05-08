@@ -4,6 +4,16 @@ Dashboard avanzado para monitorear conversaciones de agentes de IA con soporte m
 
 ![CI](https://github.com/reneallard0127/ai-conversations-dashboard/actions/workflows/ci.yml/badge.svg)
 
+## 🌐 Demo en vivo
+
+**Frontend:** https://scintillating-miracle-production-2805.up.railway.app
+
+**Backend API:** https://ai-conversations-dashboard-production.up.railway.app
+
+Cuentas de prueba:
+- carlos@techstore.com / password123 (TechStore)
+- maria@fashionshop.com / password123 (FashionShop)
+
 ## 🚀 Cómo arrancar (Docker)
 
 ### Requisitos
@@ -52,35 +62,31 @@ docker compose up --build
 
 ## 🏗️ Arquitectura
 
-┌─────────────────────────────────────────────────────┐
-│                   Docker Compose                     │
-│                                                     │
-│  ┌─────────────┐    ┌─────────────────────────────┐ │
-│  │  Frontend   │    │         Backend              │ │
-│  │  React +    │◄──►│      Node.js + Express       │ │
-│  │  Vite       │    │      WebSocket Server        │ │
-│  │  :5173      │    │         :4000                │ │
-│  └─────────────┘    └──────────────┬──────────────┘ │
-│                                    │                 │
-│  ┌─────────────┐    ┌─────────────▼──────────────┐ │
-│  │  Grafana    │    │        PostgreSQL            │ │
-│  │   :3000     │    │          :5432               │ │
-│  └──────┬──────┘    └─────────────────────────────┘ │
-│         │                                           │
-│  ┌──────▼──────┐                                   │
-│  │ Prometheus  │                                   │
-│  │   :9090     │                                   │
-│  └─────────────┘                                   │
-└─────────────────────────────────────────────────────┘
-│
-▼
-┌─────────────────────┐
-│   OpenRouter API    │
-│  (tencent/hy3-free) │
-└─────────────────────┘
+```mermaid
+graph TB
+    U[Usuario] -->|HTTPS| F[Frontend React :5173]
+    F -->|REST API| B[Backend Node.js :4000]
+    F -->|WebSocket WSS| B
+    B -->|SQL| DB[(PostgreSQL :5432)]
+    B -->|HTTP Stream| AI[OpenRouter API]
+    B -->|Métricas| P[Prometheus :9090]
+    P -->|Datasource| G[Grafana :3000]
 
+    subgraph Docker Compose
+        F
+        B
+        DB
+        P
+        G
+    end
+
+    subgraph Railway Deploy
+        F2[Frontend nginx]
+        B2[Backend Node.js]
+        DB2[(PostgreSQL)]
+    end
+```
 ---
-
 ## 🧠 Decisiones de Arquitectura
 
 ### Backend
@@ -186,3 +192,16 @@ Métricas expuestas en `http://localhost:4000/metrics`
 | `VITE_API_URL` | URL del backend para el frontend |
 | `VITE_WS_URL` | URL WebSocket del backend |
 
+## 💬 Comentarios e indicaciones adicionales
+
+### Para el evaluador
+- El deploy está en Railway (free tier) — puede haber cold starts de ~30 segundos si el servicio estuvo inactivo
+- El WebSocket en producción usa ping/pong cada 20s para mantener la conexión viva en Railway
+- El modelo de IA usado es `tencent/hy3-preview:free` via OpenRouter — es gratuito pero puede tener latencia variable
+- Si el chatbot no responde, esperar 5 segundos y reintentar — puede ser rate limit del modelo gratuito
+- Terraform no fue implementado por limitaciones de tiempo — el deploy se realizó directamente en Railway
+
+### Notas técnicas
+- La sección de Terraform está documentada como pendiente en el README pero el deploy funcional está disponible en Railway
+- El `.env` no se sube a GitHub por seguridad — las variables están configuradas directamente en Railway
+- Grafana y Prometheus solo están disponibles en el entorno local (Docker), no en el deploy de Railway por limitaciones del free tier
