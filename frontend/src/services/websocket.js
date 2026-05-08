@@ -9,7 +9,7 @@ export const connectWebSocket = (token) => {
 };
 
 const _connect = (token) => {
-  const wsUrl = 'ws://localhost:4000';
+  const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:4000';
   
   try {
     ws = new WebSocket(`${wsUrl}?token=${token}`);
