@@ -159,7 +159,7 @@ const streamGeminiResponse = async (ws, systemPrompt, history) => {
         'HTTP-Referer': 'http://localhost:5173',
       },
       body: JSON.stringify({
-        model: 'deepseek/deepseek-r1-0528:free',
+        model: 'nvidia/nemotron-3-super-120b-a12b:free',
         messages,
         stream: true,
         max_tokens: 1024,
